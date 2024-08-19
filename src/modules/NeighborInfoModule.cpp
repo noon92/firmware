@@ -3,6 +3,7 @@
 #include "MeshService.h"
 #include "NodeDB.h"
 #include "RTC.h"
+#include "RemoteRangeTestModule.h"
 
 NeighborInfoModule *neighborInfoModule;
 
@@ -106,6 +107,7 @@ void NeighborInfoModule::sendNeighborInfo(NodeNum dest, bool wantReplies)
     // send regardless of whether or not we have neighbors in our DB,
     // because we want to get neighbors for the next cycle
     p->to = dest;
+    p->channel = REMOTE_RANGETEST_LISTEN_CHANINDEX;
     p->decoded.want_response = wantReplies;
     printNeighborInfo("SENDING", &neighborInfo);
     service->sendToMesh(p, RX_SRC_LOCAL, true);

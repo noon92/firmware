@@ -19,6 +19,7 @@
 #include "configuration.h"
 #include "gps/GeoCoord.h"
 #include <Arduino.h>
+#include "RemoteRangeTestModule.h"
 
 RangeTestModule *rangeTestModule;
 RangeTestModuleRadio *rangeTestModuleRadio;
@@ -108,6 +109,7 @@ void RangeTestModuleRadio::sendPayload(NodeNum dest, bool wantReplies)
 {
     meshtastic_MeshPacket *p = allocDataPacket();
     p->to = dest;
+    p->channel = REMOTE_RANGETEST_LISTEN_CHANINDEX; //send rangetest to remoterangetest channel
     p->decoded.want_response = wantReplies;
     p->hop_limit = 0;
     p->want_ack = false;
@@ -115,7 +117,7 @@ void RangeTestModuleRadio::sendPayload(NodeNum dest, bool wantReplies)
     packetSequence++;
 
     static char heartbeatString[MAX_RHPACKETLEN];
-    snprintf(heartbeatString, sizeof(heartbeatString), "seq %u", packetSequence);
+    snprintf(heartbeatString, sizeof(heartbeatString), "#%u", packetSequence);
 
     p->decoded.payload.size = strlen(heartbeatString); // You must specify how many bytes are in the reply
     memcpy(p->decoded.payload.bytes, heartbeatString, p->decoded.payload.size);
