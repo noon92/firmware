@@ -1,4 +1,5 @@
 #include "NRF52Bluetooth.h"
+#include "BLEDfuSecure.h"
 #include "BluetoothCommon.h"
 #include "PowerFSM.h"
 #include "configuration.h"
@@ -15,8 +16,12 @@ static BLECharacteristic logRadio = BLECharacteristic(BLEUuid(LOGRADIO_UUID_16))
 
 static BLEDis bledis; // DIS (Device Information Service) helper class instance
 static BLEBas blebas; // BAS (Battery Service) helper class instance
-
+#ifndef BLE_DFU_SECURE
 static BLEDfu bledfu; // DFU software update helper service
+#else
+static BLEDfuSecure bledfusecure;                                             // DFU software update helper service
+#endif
+
 // This scratch buffer is used for various bluetooth reads/writes - but it is safe because only one bt operation can be in
 // process at once
 // static uint8_t trBytes[_max(_max(_max(_max(ToRadio_size, RadioConfig_size), User_size), MyNodeInfo_size), FromRadio_size)];
@@ -193,8 +198,13 @@ void NRF52Bluetooth::shutdown()
 {
     // Shutdown bluetooth for minimum power draw
     LOG_INFO("Disable NRF52 bluetooth\n");
-    if (connectionHandle != 0) {
-        Bluefruit.disconnect(connectionHandle);
+    uint8_t connection_num = Bluefruit.connected();
+    if (connection_num) {
+        for (uint8_t i = 0; i < connection_num; i++) {
+            LOG_INFO("NRF52 bluetooth disconnecting handle %d\n", i);
+            Bluefruit.disconnect(i);
+        }
+        delay(100); // wait for ondisconnect;
     }
     Bluefruit.Advertising.stop();
 }
@@ -247,8 +257,13 @@ void NRF52Bluetooth::setup()
     // Set the connect/disconnect callback handlers
     Bluefruit.Periph.setConnectCallback(onConnect);
     Bluefruit.Periph.setDisconnectCallback(onDisconnect);
+#ifndef BLE_DFU_SECURE
     bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
     bledfu.begin(); // Install the DFU helper
+#else
+    bledfusecure.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM); // add by WayenWeng
+    bledfusecure.begin();                                                     // Install the DFU helper
+#endif
     // Configure and Start the Device Information Service
     LOG_INFO("Configuring the Device Information Service\n");
     bledis.setModel(optstr(HW_VERSION));

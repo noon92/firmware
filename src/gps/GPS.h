@@ -28,7 +28,8 @@ typedef enum {
     GNSS_MODEL_UBLOX,
     GNSS_MODEL_UC6580,
     GNSS_MODEL_UNKNOWN,
-    GNSS_MODEL_MTK_L76B
+    GNSS_MODEL_MTK_L76B,
+    GNSS_MODEL_AG3335
 } GnssModel_t;
 
 typedef enum {
@@ -50,7 +51,7 @@ enum GPSPowerState : uint8_t {
 const char *getDOPString(uint32_t dop);
 
 /**
- * A gps class that only reads from the GPS periodically (and FIXME - eventually keeps the gps powered down except when reading)
+ * A gps class that only reads from the GPS periodically and keeps the gps powered down except when reading
  *
  * When new data is available it will notify observers.
  */
@@ -69,7 +70,7 @@ class GPS : private concurrency::OSThread
 #endif
   private:
     const int serialSpeeds[6] = {9600, 4800, 38400, 57600, 115200, 9600};
-
+    uint32_t lastWakeStartMsec = 0, lastSleepStartMsec = 0, lastFixStartMsec = 0;
     uint32_t rx_gpio = 0;
     uint32_t tx_gpio = 0;
     uint32_t en_gpio = 0;
