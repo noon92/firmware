@@ -36,11 +36,15 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
 
     if (stringsMatch(text, "SNR"))
     {
-        LOG_INFO("SNR requested: %.1f SNR, %i hops (%i - %i)\n", mp.rx_snr, mp.hop_start - mp.hop_limit, mp.hop_start, mp.hop_limit);
-        LOG_INFO("Sending SNR to: %u\n", mp.from);
-        char message[20];
-        snprintf(message, sizeof(message), "%.1f/%i/%i", mp.rx_snr, mp.rx_rssi, mp.hop_start - mp.hop_limit);
-        sendText(message, mp.channel, mp.from);
+        if (mp.hop_start - mp.hop_limit == 0){
+            LOG_INFO("SNR requested: %.1f SNR, %i hops (%i - %i)\n", mp.rx_snr, mp.hop_start - mp.hop_limit, mp.hop_start, mp.hop_limit);
+            LOG_INFO("Sending SNR to: %u\n", mp.from);
+            char message[20];
+            snprintf(message, sizeof(message), "%.1f/%i/%i", mp.rx_snr, mp.rx_rssi, mp.hop_start - mp.hop_limit);
+            sendText(message, mp.channel, mp.from);
+        } else {
+            LOG_INFO("SNR requested but hops away is %i (%i - %i)\n", mp.hop_start - mp.hop_limit, mp.hop_start, mp.hop_limit);
+        }
     };
 
     if (stringsMatch(text, triggerWord))
