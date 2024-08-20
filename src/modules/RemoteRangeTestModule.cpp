@@ -4,8 +4,10 @@
 
 static const int durationMinutes = REMOTE_RANGETEST_DURATION; // How long to run the range test
 static const int intervalMinutes = REMOTE_RANGETEST_INTERVAL; // How often can range tests run
-static char triggerWord[] = REMOTE_RANGETEST_TRIGGER;
+static const int coverDurationMinutes = REMOTE_RANGETEST_COVERAGE_DURATION;
+static char remoteRangeTestTriggerWord[] = REMOTE_RANGETEST_TRIGGER;
 uint8_t channelIndex = REMOTE_RANGETEST_LISTEN_CHANINDEX;
+uint32_t destinationNode;
 
 // Do at startup
 RemoteRangetestModule::RemoteRangetestModule()
@@ -28,34 +30,42 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
     // Grab info from the received protobuf
     char *text = (char *)mp.decoded.payload.bytes;
 
+    uint8_t hopsAway = mp.hop_start - mp.hop_limit;
+    destinationNode = mp.to;
+
     // If we like this message, start the test
-    LOG_INFO("Comparing %s\n", triggerWord);
-    LOG_INFO("Comparing %s\n", text);
-    LOG_INFO("My node is %i\n", myNodeInfo.my_node_num);
-    LOG_INFO("And this was sent to %i\n", mp.to);
+    if (stringsMatch(text, "Cover test") && (mp.to == myNodeInfo.my_node_num))
+    {
+        LOG_INFO("Coverage test requested by %u via DM.\n", mp.from);
+        String reply = "Starting ";
+        reply.concat(coverDurationMinutes);
+        reply.concat("min coverage test");
+        sendText(reply.c_str(), mp.channel, mp.from);
+        startCoverageTest(mp.from, mp.channel);
+    }
+
+    if (stringsMatch(text, "stop"))
+    {
+        LOG_INFO("Stop range/coverage test requested by %u\n", mp.from);
+        sendText("Stopping", mp.channel, mp.from);
+        coverageTestRunning = false;
+        moduleConfig.range_test.enabled = false;
+        nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
+    }
 
     if (stringsMatch(text, "SNR"))
     {
-        if (mp.hop_start - mp.hop_limit == 0){
-            LOG_INFO("SNR requested: %.1f SNR, %i hops (%i - %i)\n", mp.rx_snr, mp.hop_start - mp.hop_limit, mp.hop_start, mp.hop_limit);
-            LOG_INFO("Sending SNR to: %u\n", mp.from);
-            char message[20];
-            snprintf(message, sizeof(message), "%.1f/%i/%i", mp.rx_snr, mp.rx_rssi, mp.hop_start - mp.hop_limit);
-            sendText(message, mp.channel, mp.from);
+        if ((mp.to != myNodeInfo.my_node_num) & (hopsAway != 0)){ //was this a channel message and sent from a node that is not a neighbor?
+            LOG_INFO("SNR requested by %u via channel but was %i hops (%i - %i) away.\n", mp.from, hopsAway, mp.hop_start, mp.hop_limit);
         } else {
-            LOG_INFO("SNR requested but hops away is %i (%i - %i)\n", mp.hop_start - mp.hop_limit, mp.hop_start, mp.hop_limit);
+            LOG_INFO("SNR requested by %u: %.1f SNR, %i hops (%i - %i)\n", mp.from, mp.rx_snr, hopsAway, mp.hop_start, mp.hop_limit);
+            char message[20];
+            snprintf(message, sizeof(message), "%.1f/%i/%i", mp.rx_snr, mp.rx_rssi, hopsAway);
+            sendText(message, mp.channel, mp.from);
         }
-    };
+    }
 
-    if (stringsMatch(text, triggerWord))
-    {
-        LOG_INFO("strings match!!\n");
-    };
-    if (mp.to == myNodeInfo.my_node_num)
-    {
-        LOG_INFO("sender matches!!\n");
-    };
-    if (stringsMatch(text, triggerWord) && mp.to == myNodeInfo.my_node_num)
+    if (stringsMatch(text, remoteRangeTestTriggerWord) && mp.to == myNodeInfo.my_node_num)
     {
         LOG_INFO("User asked for a rangetest\n");
         beginRangeTest(mp.from, channelIndex);
@@ -82,7 +92,7 @@ void RemoteRangetestModule::beginRangeTest(uint32_t informNode, ChannelIndex inf
         LOG_INFO("Remote range test already running\n");
 
         String reply = nodeName;
-        reply.concat(": Range test running. Turn on in settings, with 0secs or off as interval.");
+        reply.concat(": Range test running. Turn on in settings, with 0secs or off as interval");
         sendText(reply.c_str(), informViaChannel);
         return;
     }
@@ -95,7 +105,7 @@ void RemoteRangetestModule::beginRangeTest(uint32_t informNode, ChannelIndex inf
         String reply = nodeName;
         reply.concat(": Too soon for a new range test. Try again in ");
         reply.concat(intervalMinutes - (millis() / MS_IN_MINUTE));
-        reply.concat(" mins.");
+        reply.concat("mins");
         sendText(reply.c_str(), informViaChannel, NODENUM_BROADCAST);
         return;
     }
@@ -107,44 +117,51 @@ void RemoteRangetestModule::beginRangeTest(uint32_t informNode, ChannelIndex inf
     LOG_INFO("INFORMNODE: %i\n", informNode);
 
     String reply = nodeName;
-    reply.concat(": Activating ");
-    reply.concat(durationMinutes);
-    reply.concat(" min range test.");
+    reply.concat(": Starting ");
+    reply.concat(coverDurationMinutes);
+    reply.concat("min range test");
     sendText(reply.c_str(), informViaChannel);
     moduleConfig.range_test.enabled = true;   // Enable the range test module
     nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
 
-    // Set the
-    waitingToReboot = true;
-    setIntervalFromNow(15 * 1000UL);
-    OSThread::enabled = true;
+    // Reboot in 15 seconds
+    rebootAtMsec = millis() + (15 * 1000UL); 
 }
 
 // Timer: when we need to wait in the background
 int32_t RemoteRangetestModule::runOnce()
 {
-    // If we've enabled the range test module, and are just waiting to reboot to apply the changes
-    if (waitingToReboot)
-    {
-        // Reboot (platform specific)
-#if defined(ARCH_ESP32)
-        ESP.restart();
-#elif defined(ARCH_NRF52)
-        NVIC_SystemReset();
-#endif
-    }
-
     // If the range test module is running, and is due to be disabled
-    if (moduleConfig.range_test.enabled)
+    if (moduleConfig.range_test.enabled && millis() > durationMinutes * 60 * 1000UL)
     {
         LOG_INFO("Time's up! Disabling remote range test\n");
-        sendText("Range test complete.", channelIndex);
+        sendText("Range test complete", channelIndex);
         moduleConfig.range_test.enabled = false;
         nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
-        return disable();                         // stop the timer
     }
 
-    return disable(); // We shouldn't be able to reach this point..
+    // If the coverage test is running, and due to fire a message (every minute)
+    if (coverageTestRunning) {
+        // Send the message
+        LOG_DEBUG("Coverage test: sending DM to %u on channel %u\n", coverageTestRecipient, (uint32_t)channelIndex);
+        sendCoverageTestDM();
+
+        // If running for longer than durationMinutes: mark as finished
+        if (millis() > coverageTestRunningSinceMs + (coverDurationMinutes * 60 * 1000UL)) {
+            LOG_INFO("Coverage test complete\n");
+            coverageTestRunning = false;
+        }
+    }
+
+    // Decide if we still need to keep our timer running, for either remote rangetest or coverage test
+    if (coverageTestRunning || moduleConfig.range_test.enabled) {
+        // Run again in a minute
+        // For coverage test: this is how often we send out DMs
+        // For range test: probably only reach this code if we are *also* running a coverage test
+        return 60 * 1000UL;
+    }
+    else
+        return OSThread::disable(); // Nobody using the timer
 }
 
 // Send a text message over the mesh. "Borrowed" from canned message module
@@ -154,7 +171,10 @@ void RemoteRangetestModule::sendText(const char *message, int channelIndex, uint
     p->to = dest;
     p->channel = channelIndex;
     p->want_ack = false;
-    //  p->hop_limit = 3;
+    if ((coverageTestRunning) || ((destinationNode == myNodeInfo.my_node_num) & (!coverageTestRunning) & (!moduleConfig.range_test.enabled))) {
+        p->hop_limit = 7;
+        LOG_INFO("Sending response with 7 hop limit.\n");
+    }
     p->decoded.payload.size = strlen(message);
     p->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
     memcpy(p->decoded.payload.bytes, message, p->decoded.payload.size);
@@ -181,4 +201,27 @@ bool RemoteRangetestModule::stringsMatch(const char *s1, const char *s2, bool ca
     }
 
     return true;
+}
+
+void RemoteRangetestModule::startCoverageTest(uint32_t recipient, uint8_t channelIndex) {
+    // Store details of where we're sending the DMs
+    coverageTestRecipient = recipient;
+    coverageTestChannelIndex = channelIndex;
+
+    // Reset the number send with the messages
+    coverageTestMessageCount = 1;
+
+    // Start the thread running (runOnce timet)
+    coverageTestRunning = true;
+    OSThread::setInterval(0);
+    OSThread::enabled = true;
+
+    LOG_INFO("Coverage test started\n");
+}
+
+void RemoteRangetestModule::sendCoverageTestDM() {
+    char message[25];
+    snprintf(message, sizeof(message), "cov%u", coverageTestMessageCount);
+    sendText(message, coverageTestChannelIndex, coverageTestRecipient);
+    coverageTestMessageCount++;
 }
