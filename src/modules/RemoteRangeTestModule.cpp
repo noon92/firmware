@@ -33,7 +33,6 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
     uint8_t hopsAway = mp.hop_start - mp.hop_limit;
     destinationNode = mp.to;
 
-    // If we like this message, start the test
     if (stringsMatch(text, "Cover test") && (mp.to == myNodeInfo.my_node_num))
     {
         LOG_INFO("Coverage test requested by %u via DM.\n", mp.from);
@@ -44,7 +43,23 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
         startCoverageTest(mp.from, mp.channel);
     }
 
-    if (stringsMatch(text, "stop"))
+    if (stringsMatch(text, "/help"))
+    {
+        LOG_INFO("Help requested by %u\n", mp.from);
+        sendText("1/4\n'SNR': In chan responds to neighbors. In DM to all. Format: SNR/RSSI/hopsAway", mp.channel, mp.from);
+        String reply2 = "2/4\n'Range test': DM only. Sends RT for ";
+        reply2.concat(durationMinutes);
+        reply2.concat("mins");
+        sendText(reply2.c_str(), mp.channel, mp.from);
+        String reply3 = "3/4\n'Cover test': DM only. Sends CT every 1min for ";
+        reply3.concat(coverDurationMinutes);
+        reply3.concat("min in DM w/7hops");
+        sendText(reply3.c_str(), mp.channel, mp.from);
+        sendText("4/4\n'Stop': DM only. Stops CT & RT", mp.channel, mp.from);
+        nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
+    }
+
+    if ((stringsMatch(text, "stop")) && (mp.to == myNodeInfo.my_node_num))
     {
         LOG_INFO("Stop range/coverage test requested by %u\n", mp.from);
         sendText("Stopping", mp.channel, mp.from);
@@ -72,7 +87,7 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
         return ProcessMessage::CONTINUE;
     }
 
-    return ProcessMessage::CONTINUE; // We weren't interested in this message, treat it as nomal
+    return ProcessMessage::CONTINUE; // We weren't interested in this message, treat it as normal
 }
 
 // Check if it's appropriate, then run range test
@@ -171,7 +186,7 @@ void RemoteRangetestModule::sendText(const char *message, int channelIndex, uint
     p->to = dest;
     p->channel = channelIndex;
     p->want_ack = false;
-    if ((coverageTestRunning) || ((destinationNode == myNodeInfo.my_node_num) & (!coverageTestRunning) & (!moduleConfig.range_test.enabled))) {
+    if ((coverageTestRunning) || ((destinationNode == myNodeInfo.my_node_num) & (!coverageTestRunning) & (!moduleConfig.range_test.enabled))) { //if coverage test OR snr via DM, respond with 7 hops.
         p->hop_limit = 7;
         LOG_INFO("Sending response with 7 hop limit.\n");
     }

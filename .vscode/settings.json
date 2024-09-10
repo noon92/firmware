@@ -9,6 +9,7 @@
     "editor.defaultFormatter": "trunk.io"
   },
   "files.associations": {
-    "system_error": "cpp"
+    "system_error": "cpp",
+    "cmath": "cpp"
   }
 }

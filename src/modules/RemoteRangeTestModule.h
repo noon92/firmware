@@ -8,7 +8,7 @@
 #define REMOTE_RANGETEST_COVERAGE_DURATION 60 //length of coverage test in minutes
 #define REMOTE_RANGETEST_INTERVAL 0 //time before new range test can be called after previous one ends
 #define REMOTE_RANGETEST_TRIGGER "Range test"
-#define REMOTE_RANGETEST_LISTEN_CHANINDEX 2 //channel on which response is given and encryption key on which command is listened for
+#define REMOTE_RANGETEST_LISTEN_CHANINDEX 0 //channel on which response is given and encryption key on which command is listened for
 class RemoteRangetestModule : public SinglePortModule, public concurrency::OSThread
 {
   public:
