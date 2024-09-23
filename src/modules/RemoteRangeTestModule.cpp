@@ -41,6 +41,7 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
         reply.concat("min coverage test");
         sendText(reply.c_str(), mp.channel, mp.from);
         startCoverageTest(mp.from, mp.channel);
+        return ProcessMessage::STOP;
     }
 
     if (stringsMatch(text, "/help"))
@@ -56,6 +57,7 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
         reply3.concat("min in DM w/7hops");
         sendText(reply3.c_str(), mp.channel, mp.from);
         sendText("4/4\n'Stop': DM only. Stops CT & RT", mp.channel, mp.from);
+        return ProcessMessage::STOP;
         nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
     }
 
@@ -65,12 +67,13 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
         sendText("Stopping", mp.channel, mp.from);
         coverageTestRunning = false;
         moduleConfig.range_test.enabled = false;
+        return ProcessMessage::STOP;
         nodeDB->saveToDisk(SEGMENT_MODULECONFIG); // Save this changed config to disk
     }
 
     if (stringsMatch(text, "SNR"))
     {
-        if ((mp.to != myNodeInfo.my_node_num) & (hopsAway != 0)){ //was this a channel message and sent from a node that is not a neighbor?
+        if ((mp.to != myNodeInfo.my_node_num) & (hopsAway > 1)){ //was this a channel message and sent from a node that is not a neighbor?
             LOG_INFO("SNR requested by %u via channel but was %i hops (%i - %i) away.\n", mp.from, hopsAway, mp.hop_start, mp.hop_limit);
         } else {
             LOG_INFO("SNR requested by %u: %.1f SNR, %i hops (%i - %i)\n", mp.from, mp.rx_snr, hopsAway, mp.hop_start, mp.hop_limit);
@@ -78,13 +81,14 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
             snprintf(message, sizeof(message), "%.1f/%i/%i", mp.rx_snr, mp.rx_rssi, hopsAway);
             sendText(message, mp.channel, mp.from);
         }
+    return ProcessMessage::STOP;
     }
 
     if (stringsMatch(text, remoteRangeTestTriggerWord) && mp.to == myNodeInfo.my_node_num)
     {
         LOG_INFO("User asked for a rangetest\n");
         beginRangeTest(mp.from, channelIndex);
-        return ProcessMessage::CONTINUE;
+        return ProcessMessage::STOP;
     }
 
     return ProcessMessage::CONTINUE; // We weren't interested in this message, treat it as normal
