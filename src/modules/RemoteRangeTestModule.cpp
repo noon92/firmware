@@ -47,7 +47,7 @@ ProcessMessage RemoteRangetestModule::handleReceived(const meshtastic_MeshPacket
     if (stringsMatch(text, "/help"))
     {
         LOG_INFO("Help requested by %u\n", mp.from);
-        sendText("1/4\n'SNR': In chan responds to neighbors. In DM to all. Format: SNR/RSSI/hopsAway", mp.channel, mp.from);
+        sendText("1/4\n'SNR': In chan responds to 0 or 1 hops. In DM to all. Format: SNR/RSSI/hopsAway", mp.channel, mp.from);
         String reply2 = "2/4\n'Range test': DM only. Sends RT for ";
         reply2.concat(durationMinutes);
         reply2.concat("mins");
